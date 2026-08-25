@@ -11,6 +11,10 @@ wheels/
 *.bin
 
 # Compiled CUDA/C++ binaries
+# bare names match at any depth, extensionless compiled outputs
+verify
+print_example
+transpose/verify_transpose
 /device_function
 /fast_mat_mul
 /matrix_element
