@@ -53,6 +53,51 @@ bool verify_result(const std::vector<float>& h_matrix_a,
     return true;
 }
 
+bool verify_result_advanced(const std::vector<float>& h_matrix_a,
+                            const std::vector<float>& h_matrix_b,
+                            float scaler, float tolerance = 1e-4f,
+                            float rel_tolerance = 1e-4f) {
+    if (h_matrix_a.size() != h_matrix_b.size()) {
+        fprintf(stderr, "Size mismatch: %zu vs %zu\n", h_matrix_a.size(), h_matrix_b.size());
+        return false;
+    }
+
+    size_t num_elements = h_matrix_a.size();
+    size_t mismatch_count = 0;
+    float max_abs_error = 0.0f;
+    float max_rel_error = 0.0f;
+    float sum_abs_error = 0.0f;
+
+    for (size_t i = 0; i < num_elements; i++) {
+        float expected = h_matrix_a[i] * scaler;
+        float actual = h_matrix_b[i];
+        float abs_error = fabsf(expected - actual);
+        float rel_error = fabsf(expected) > 0.0f ? abs_error / fabsf(expected) : 0.0f;
+
+        sum_abs_error += abs_error;
+        max_abs_error = fmaxf(max_abs_error, abs_error);
+        max_rel_error = fmaxf(max_rel_error, rel_error);
+
+        if (abs_error > tolerance && rel_error > rel_tolerance) {
+            if (mismatch_count < 5) {
+                fprintf(stderr, "Mismatch at index %zu: expected %f, got %f\n",
+                        i, expected, actual);
+            }
+            mismatch_count++;
+        }
+    }
+
+    printf("Elements: %zu | mismatches: %zu | max abs error: %e | max rel error: %e | mean abs error: %e\n",
+           num_elements, mismatch_count, max_abs_error, max_rel_error, sum_abs_error / num_elements);
+
+    if (mismatch_count == 0) {
+        printf("Verification passed\n");
+        return true;
+    }
+    fprintf(stderr, "%zu mismatches detected\n", mismatch_count);
+    return false;
+}
+
 int main(){
     int M = 1024;
     int N = 2048;

@@ -25,7 +25,9 @@ void random_init_tensor(std::vector<float>& tensor){
     }
 }
 
-__global__ void matrix_multiplication(float* A, float* B, float* C, int M, int K, int N){
+constexpr int tileSize = 32;
+
+__global__ void matrix_multiplication(float* A, float* B, float* C, float* bias, int M, int K, int N){
     __shared__ float tileA[tileSize][tileSize];
     __shared__ float tileB[tileSize][tileSize];
 
@@ -50,7 +52,7 @@ __global__ void matrix_multiplication(float* A, float* B, float* C, int M, int K
         __syncthreads();
     }
 
-    C[C_row * N + C_col] = sum;
+    C[C_row * N + C_col] = sum + bias[C_row];
 }
 
 __device__ float reduce_sum(float local_sum, float* shared){
@@ -84,7 +86,7 @@ __global__ void layer_norm(float* input_tensor, float* output_tensor, int dim){
     for (int i = global_index + local_index; i < global_index + dim; i += blockDim.x){
         local_sum += input_tensor[i];
     }
-    float dim_sum = reduce_sum(local_sum, shared, dim);
+    float dim_sum = reduce_sum(local_sum, shared);
     float dim_avg = dim_sum / dim;
 
     // Step 2, find the variance
@@ -93,7 +95,7 @@ __global__ void layer_norm(float* input_tensor, float* output_tensor, int dim){
         float diff_square = input_tensor[i] - dim_avg;
         local_sum_square += diff_square * diff_square;
     }
-    float dim_sum_square = reduce_sum(local_sum_square, shared, dim);
+    float dim_sum_square = reduce_sum(local_sum_square, shared);
     float variance = dim_sum_square / dim;
 
     // Step 3, do the layernorm
@@ -166,12 +168,45 @@ __global__ void softmaxKernel(float* input_tensor, float* output_tensor, int dim
     }
 }
 
-__global__ void transpose(){
-    
+__global__ void transpose(float* original_tensor, float* transposed_tensor, int M, int N){
+    int global_x_index = blockIdx.x * blockDim.x + threadIdx.x;
+    int global_y_index = blockIdx.y * blockDim.y + threadIdx.y;
+
+    transposed_tensor[global_y_index * M + global_x_index] = original_tensor[global_x_index * N + global_y_index];
 }
 
-__global__ void transformer_layer(){
+__global__ void relu(float* tensor, int width){
+    int global_x_index = blockIdx.x * blockDim.x + threadIdx.x;
+    int global_y_index = blockIdx.y * blockDim.y + threadIdx.y;
 
+    if (tensor[global_y_index * width + global_x_index] < 0){
+        tensor[global_y_index * width + global_x_index] = 0;
+    }
+}
+
+__global__ void matrix_elementwise_addition(float* matrix_a, float* matrix_b, float* matrix_c, int N){
+    int global_x_index = blockIdx.x * blockDim.x + threadIdx.x;
+    int global_y_index = blockIdx.y * blockDim.y + threadIdx.y;
+
+    matrix_c[global_y_index * N + global_x_index] = matrix_a[global_y_index * N + global_x_index] + matrix_b[global_y_index * N + global_x_index];
+}
+
+__global__ void matrix_scaler_multiplication(float* matrix_a, float* matrix_b, float scaler, int N){
+    int global_x_index = blockIdx.x * blockDim.x + threadIdx.x;
+    int global_y_index = blockIdx.y * blockDim.y + threadIdx.y;
+
+    matrix_b[global_y_index * N + global_x_index] = matrix_a[global_y_index * N + global_x_index] * scaler;
+}
+
+__global__ void matrix_scaler_multiplication(float* matrix_a, float* matrix_b, int N){
+    int global_x_index = blockIdx.x * blockDim.x + threadIdx.x;
+    int global_y_index = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (global_x_index > global_y_index){
+        matrix_b[global_y_index * N + global_x_index] = -CUDART_INF_F;
+    } else {
+        matrix_b[global_y_index * N + global_x_index] = matrix_a[global_y_index * N + global_x_index];
+    }
 }
 
 int main(){
