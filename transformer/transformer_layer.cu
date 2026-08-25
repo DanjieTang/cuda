@@ -198,7 +198,7 @@ __global__ void matrix_scaler_multiplication(float* matrix_a, float* matrix_b, f
     matrix_b[global_y_index * N + global_x_index] = matrix_a[global_y_index * N + global_x_index] * scaler;
 }
 
-__global__ void matrix_scaler_multiplication(float* matrix_a, float* matrix_b, int N){
+__global__ void causal_mask(float* matrix_a, float* matrix_b, int N){
     int global_x_index = blockIdx.x * blockDim.x + threadIdx.x;
     int global_y_index = blockIdx.y * blockDim.y + threadIdx.y;
 
